@@ -24,8 +24,7 @@ class App : Application(), ImageLoaderFactory {
                     .maxSizeBytes(Prefs.cacheMb * 1024L * 1024) // batas cache, diatur di Pengaturan
                     .build()
             }
-            .respectCacheHeaders(false)
-            .crossfade(150)
+            .crossfade(true)
             .build()
 
     companion object {

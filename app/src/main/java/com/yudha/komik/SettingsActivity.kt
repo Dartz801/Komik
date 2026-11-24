@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
+import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Layar tempat mengisi link situs komik (cukup sekali). */
@@ -66,6 +67,14 @@ class SettingsActivity : AppCompatActivity() {
 
         setupCache()
 
+        // Tes: ambil satu sampul dan tampilkan jawaban server-nya.
+        findViewById<Button>(R.id.testImg).setOnClickListener {
+            status.text = "Mengetes gambar…"
+            lifecycleScope.launch {
+                status.text = withContext(Dispatchers.IO) { testImage() }
+            }
+        }
+
         findViewById<Button>(R.id.verify).setOnClickListener {
             val base = normalize(input.text.toString()) ?: Prefs.baseUrl
             if (base.isEmpty()) {
@@ -74,6 +83,20 @@ class SettingsActivity : AppCompatActivity() {
             }
             Prefs.baseUrl = base
             startActivity(Intent(this, WebViewActivity::class.java).putExtra("url", base))
+        }
+    }
+
+    private fun testImage(): String {
+        return try {
+            val src = Sources.current() ?: return "Isi link situs dulu."
+            val c = src.latest(1).firstOrNull() ?: return "Daftar komik kosong."
+            if (c.cover.isBlank()) return "Alamat sampul kosong (struktur halaman berubah)."
+            Net.client.newCall(Request.Builder().url(c.cover).build()).execute().use { r ->
+                "Hasil tes gambar:\nKode: ${r.code}\nTipe: ${r.header("Content-Type")}\n" +
+                    "Ukuran: ${r.body?.bytes()?.size ?: 0} byte\nServer: ${r.request.url.host}\nAlamat: ${c.cover}"
+            }
+        } catch (e: Exception) {
+            "Tes gagal: ${e.javaClass.simpleName}: ${e.message}"
         }
     }
 

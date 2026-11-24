@@ -62,8 +62,7 @@ object Net {
                 for ((i, h) in hosts.withIndex()) {
                     try {
                         val r = chain.proceed(req.newBuilder().url(req.url.newBuilder().host(h).build()).build())
-                        // 429 = terlalu banyak permintaan: jangan coba server lain, kembalikan saja.
-                        if (r.isSuccessful || r.code == 429 || i == hosts.lastIndex) return@addInterceptor r
+                        if (r.isSuccessful || i == hosts.lastIndex) return@addInterceptor r
                         r.close()
                     } catch (e: IOException) {
                         lastErr = e

@@ -41,6 +41,11 @@
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="8dp" android:text="Verifikasi di browser" />
+        <Button
+            android:id="@+id/testImg"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Tes gambar" />
 
         <TextView
             android:layout_width="wrap_content" android:layout_height="wrap_content"
