@@ -34,6 +34,8 @@ data class Detail(
 object Session {
     var comicUrl = ""
     var chapters: List<Chapter> = emptyList()
+    /** Tag bahasa galeri (english/japanese/chinese) untuk terjemahan. */
+    var lang = "english"
 }
 
 interface Source {

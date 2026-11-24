@@ -122,6 +122,9 @@ class DetailActivity : AppCompatActivity() {
         val d = detail ?: return
         Session.comicUrl = comic.url
         Session.chapters = d.chapters
+        Session.lang = d.tagGroups.firstOrNull { it.label == "Languages" }?.tags
+            ?.map { it.name.lowercase() }?.firstOrNull { it == "japanese" || it == "chinese" || it == "english" }
+            ?: "english"
         startActivity(Intent(this, ReaderActivity::class.java).putExtra("index", index).putExtra("page", page))
     }
 

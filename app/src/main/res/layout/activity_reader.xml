@@ -14,25 +14,35 @@
         android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_gravity="center" android:gravity="center" android:padding="24dp"
         android:textColor="@android:color/white" android:visibility="gone" />
+    <!-- Bar disembunyikan; ketuk layar untuk menampilkan -->
     <LinearLayout
         android:id="@+id/bar"
         android:layout_width="match_parent" android:layout_height="wrap_content"
         android:layout_gravity="bottom" android:background="#CC000000"
-        android:gravity="center_vertical" android:orientation="horizontal" android:padding="6dp">
+        android:gravity="center_vertical" android:orientation="horizontal" android:padding="6dp"
+        android:visibility="gone">
         <Button
             android:id="@+id/prev"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="‹ Sebelumnya" />
+            android:text="‹ Bab" android:visibility="gone" />
         <TextView
             android:id="@+id/chTitle"
             android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
             android:ellipsize="end" android:gravity="center" android:maxLines="1"
             android:textColor="@android:color/white" />
         <Button
+            android:id="@+id/trans"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <Button
+            android:id="@+id/mode"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <Button
             android:id="@+id/next"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="Berikutnya ›" />
+            android:text="Bab ›" android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>

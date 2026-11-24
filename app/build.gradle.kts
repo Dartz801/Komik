@@ -53,4 +53,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-cronet:18.0.1")
     implementation("com.google.net.cronet:cronet-okhttp:0.1.0")
     implementation("org.chromium.net:cronet-api:119.6045.31")
+    // Terjemahan: baca teks di gambar + terjemahkan offline (Google ML Kit)
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-japanese:16.0.1")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:translate:17.0.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 }
