@@ -1,5 +1,6 @@
 package com.yudha.komik
 
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -148,10 +149,16 @@ class Madara(private val base: String) : Source {
     }
 }
 
-/** nhentai: data diambil dari API JSON situsnya. Satu galeri = satu "chapter". */
+/**
+ * nhentai: daftar & pencarian dibaca dari halaman web (bukan API, karena API daftar sudah 404).
+ * Data galeri diambil dari JSON yang tertanam di halaman /g/<id>/, dengan cadangan
+ * API lama dan cadangan terakhir membaca thumbnail di halaman.
+ * Satu galeri = satu "chapter".
+ */
 class Nhentai(private val base: String) : Source {
     // Konten yang menyeksualisasi anak tidak ditampilkan.
     private val blocked = setOf("lolicon", "shotacon")
+    private val blockedTagIds = setOf("19440", "32341")
     private val exclude = " -tag:lolicon -tag:shotacon"
 
     private fun ext(t: String) = when (t) {
@@ -161,78 +168,122 @@ class Nhentai(private val base: String) : Source {
         else -> "jpg"
     }
 
-    private fun isBlocked(g: JSONObject): Boolean {
+    // ---------- Daftar & pencarian (HTML) ----------
+
+    override fun latest(page: Int) = list(Net.get("$base/?page=$page"))
+
+    override fun search(query: String, page: Int) =
+        list(Net.get("$base/search/?q=${enc(query + exclude)}&page=$page"))
+
+    private fun list(doc: Document): List<Comic> {
+        var items = doc.select(".index-container:not(.index-popular) div.gallery")
+        if (items.isEmpty()) items = doc.select("div.gallery")
+        return items.mapNotNull { g ->
+            val tagIds = g.attr("data-tags").split(" ").toSet()
+            if (tagIds.any { it in blockedTagIds }) return@mapNotNull null
+            val a = g.selectFirst("a[href]") ?: return@mapNotNull null
+            val title = g.selectFirst(".caption")?.text() ?: g.text()
+            Comic(title.trim(), a.absUrl("href"), g.selectFirst("img")?.img().orEmpty())
+        }.distinctBy { it.url }
+    }
+
+    // ---------- Data galeri ----------
+
+    private fun galleryId(url: String) =
+        Regex("""/g/(\d+)""").find(url)?.groupValues?.get(1) ?: throw IOException("Link galeri tidak valid.")
+
+    /** JSON galeri dari skrip `JSON.parse("...")` di halaman, atau dari API lama. Null jika tidak ada. */
+    private fun galleryJson(doc: Document, id: String): JSONObject? {
+        for (sc in doc.select("script")) {
+            val m = Regex("""JSON\.parse\(\s*"(.*?)"\s*\)""", RegexOption.DOT_MATCHES_ALL).find(sc.data())
+                ?: continue
+            try {
+                // Bongkar escape string JavaScript lewat parser JSON.
+                val raw = JSONArray("[\"" + m.groupValues[1] + "\"]").getString(0)
+                val o = JSONObject(raw)
+                if (o.has("media_id")) return o
+            } catch (e: Exception) {
+                // coba skrip berikutnya
+            }
+        }
+        return try {
+            JSONObject(Net.getText("$base/api/gallery/$id"))
+        } catch (e: CloudflareException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun jsonBlocked(g: JSONObject): Boolean {
         val tags = g.optJSONArray("tags") ?: return false
         return (0 until tags.length()).any { tags.getJSONObject(it).optString("name") in blocked }
     }
 
-    private fun title(g: JSONObject): String {
-        val t = g.optJSONObject("title") ?: return ""
-        return t.optString("pretty").ifBlank { t.optString("english") }
-    }
+    private fun htmlBlocked(doc: Document) =
+        doc.select("#tags a.tag .name").any { it.text().trim() in blocked }
 
-    private fun imgType(g: JSONObject, key: String) =
-        g.optJSONObject("images")?.optJSONObject(key)?.optString("t").orEmpty()
-
-    private fun list(url: String): List<Comic> {
-        val arr = JSONObject(Net.getText(url)).optJSONArray("result") ?: return emptyList()
-        return (0 until arr.length()).map { arr.getJSONObject(it) }
-            .filterNot { isBlocked(it) }
-            .map { g ->
-                val media = g.optString("media_id")
-                Comic(
-                    title(g),
-                    "$base/g/${g.get("id")}/",
-                    "https://t.nhentai.net/galleries/$media/thumb.${ext(imgType(g, "thumbnail"))}"
-                )
-            }
-    }
-
-    override fun latest(page: Int) = list("$base/api/galleries/all?page=$page")
-
-    override fun search(query: String, page: Int) =
-        list("$base/api/galleries/search?query=${enc(query + exclude)}&page=$page")
-
-    private fun gallery(url: String): JSONObject {
-        val id = Regex("""/g/(\d+)""").find(url)?.groupValues?.get(1)
-            ?: throw IOException("Link galeri tidak valid.")
-        val g = JSONObject(Net.getText("$base/api/gallery/$id"))
-        if (isBlocked(g)) throw IOException("Konten ini tidak ditampilkan.")
-        return g
+    private fun load(url: String): Triple<Document, String, JSONObject?> {
+        val id = galleryId(url)
+        val doc = Net.get("$base/g/$id/")
+        val json = galleryJson(doc, id)
+        if ((json != null && jsonBlocked(json)) || htmlBlocked(doc)) throw IOException("Konten ini tidak ditampilkan.")
+        return Triple(doc, id, json)
     }
 
     override fun detail(url: String): Detail {
-        val g = gallery(url)
-        val media = g.optString("media_id")
+        val (doc, _, g) = load(url)
         val labels = mapOf(
             "parody" to "Parodi", "character" to "Karakter", "tag" to "Tag", "artist" to "Artis",
             "group" to "Grup", "language" to "Bahasa", "category" to "Kategori"
         )
         val byType = linkedMapOf<String, MutableList<String>>()
-        val tags = g.optJSONArray("tags")
-        if (tags != null) {
-            for (i in 0 until tags.length()) {
-                val t = tags.getJSONObject(i)
-                byType.getOrPut(t.optString("type")) { mutableListOf() }.add(t.optString("name"))
+        var title = doc.selectFirst("#info h1")?.text().orEmpty()
+        var cover = doc.selectFirst("#cover img")?.img().orEmpty()
+        var n = doc.select("#thumbnail-container .thumb-container").size
+        if (g != null) {
+            val t = g.optJSONObject("title")
+            if (t != null) title = t.optString("pretty").ifBlank { t.optString("english") }.ifBlank { title }
+            val media = g.optString("media_id")
+            val coverT = g.optJSONObject("images")?.optJSONObject("cover")?.optString("t").orEmpty()
+            if (cover.isEmpty()) cover = "https://t.nhentai.net/galleries/$media/cover.${ext(coverT)}"
+            n = g.optInt("num_pages", n)
+            val tags = g.optJSONArray("tags")
+            if (tags != null) {
+                for (i in 0 until tags.length()) {
+                    val tg = tags.getJSONObject(i)
+                    byType.getOrPut(tg.optString("type")) { mutableListOf() }.add(tg.optString("name"))
+                }
+            }
+        } else {
+            for (box in doc.select("#tags .tag-container")) {
+                val names = box.select("a.tag .name").map { it.text() }
+                if (names.isEmpty()) continue
+                val label = box.ownText().trim().trimEnd(':').lowercase().removeSuffix("s")
+                byType.getOrPut(label) { mutableListOf() }.addAll(names)
             }
         }
         val info = byType.entries.joinToString("\n") { (k, v) -> "${labels[k] ?: k}: ${v.joinToString(", ")}" }
-        val n = g.optInt("num_pages")
-        return Detail(
-            title(g),
-            "https://t.nhentai.net/galleries/$media/cover.${ext(imgType(g, "cover"))}",
-            "$n halaman\n$info",
-            listOf(Chapter("Baca ($n halaman)", url, ""))
-        )
+        return Detail(title, cover, "$n halaman\n$info", listOf(Chapter("Baca ($n halaman)", url, "")))
     }
 
     override fun pages(chapterUrl: String): List<String> {
-        val g = gallery(chapterUrl)
-        val media = g.optString("media_id")
-        val pages = g.optJSONObject("images")?.optJSONArray("pages") ?: return emptyList()
-        return (0 until pages.length()).map {
-            "https://i.nhentai.net/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
+        val (doc, _, g) = load(chapterUrl)
+        val pages = g?.optJSONObject("images")?.optJSONArray("pages")
+        if (g != null && pages != null && pages.length() > 0) {
+            val media = g.optString("media_id")
+            return (0 until pages.length()).map {
+                "https://i.nhentai.net/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
+            }
         }
+        // Cadangan: thumbnail ".../galleries/<media>/3t.jpg" -> gambar penuh ".../galleries/<media>/3.jpg"
+        return doc.select("#thumbnail-container img").map { it.img() }
+            .filter { it.contains("/galleries/") }
+            .map { u ->
+                u.replace(Regex("""//t(\d*)\."""), "//i$1.")
+                    .replace(Regex("""/(\d+)t\.(\w+)$"""), "/$1.$2")
+            }
+            .distinct()
     }
 }
 

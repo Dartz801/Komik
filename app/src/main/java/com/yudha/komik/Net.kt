@@ -97,7 +97,7 @@ object Net {
             val cf = r.header("Server")?.contains("cloudflare", true) == true ||
                 text.contains("challenge-platform") || text.contains("Just a moment")
             if ((r.code == 403 || r.code == 503) && cf) throw CloudflareException()
-            if (!r.isSuccessful) throw IOException("Gagal memuat halaman (kode ${r.code}).")
+            if (!r.isSuccessful) throw IOException("Gagal memuat (kode ${r.code}): ${r.request.url.encodedPath}")
             return text to r.request.url.toString()
         }
     }
