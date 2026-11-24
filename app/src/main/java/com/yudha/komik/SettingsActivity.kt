@@ -46,8 +46,12 @@ class SettingsActivity : AppCompatActivity() {
                 try {
                     val (theme, n) = withContext(Dispatchers.IO) { Sources.detect(base) }
                     Prefs.theme = theme
-                    val name = if (theme == "madara") "Madara" else "MangaThemesia"
-                    status.text = "✔ Berhasil! Tema $name, $n komik terbaca.\nTekan tombol kembali untuk mulai membaca."
+                    val name = when (theme) {
+                        "madara" -> "Madara"
+                        "nhentai" -> "nhentai (API)"
+                        else -> "MangaThemesia"
+                    }
+                    status.text = "✔ Berhasil! Sumber $name, $n komik terbaca.\nTekan tombol kembali untuk mulai membaca."
                 } catch (e: Exception) {
                     status.text = "✘ ${e.message}"
                 } finally {

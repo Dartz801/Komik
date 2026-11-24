@@ -148,15 +148,112 @@ class Madara(private val base: String) : Source {
     }
 }
 
+/** nhentai: data diambil dari API JSON situsnya. Satu galeri = satu "chapter". */
+class Nhentai(private val base: String) : Source {
+    // Konten yang menyeksualisasi anak tidak ditampilkan.
+    private val blocked = setOf("lolicon", "shotacon")
+    private val exclude = " -tag:lolicon -tag:shotacon"
+
+    private fun ext(t: String) = when (t) {
+        "p" -> "png"
+        "g" -> "gif"
+        "w" -> "webp"
+        else -> "jpg"
+    }
+
+    private fun isBlocked(g: JSONObject): Boolean {
+        val tags = g.optJSONArray("tags") ?: return false
+        return (0 until tags.length()).any { tags.getJSONObject(it).optString("name") in blocked }
+    }
+
+    private fun title(g: JSONObject): String {
+        val t = g.optJSONObject("title") ?: return ""
+        return t.optString("pretty").ifBlank { t.optString("english") }
+    }
+
+    private fun imgType(g: JSONObject, key: String) =
+        g.optJSONObject("images")?.optJSONObject(key)?.optString("t").orEmpty()
+
+    private fun list(url: String): List<Comic> {
+        val arr = JSONObject(Net.getText(url)).optJSONArray("result") ?: return emptyList()
+        return (0 until arr.length()).map { arr.getJSONObject(it) }
+            .filterNot { isBlocked(it) }
+            .map { g ->
+                val media = g.optString("media_id")
+                Comic(
+                    title(g),
+                    "$base/g/${g.get("id")}/",
+                    "https://t.nhentai.net/galleries/$media/thumb.${ext(imgType(g, "thumbnail"))}"
+                )
+            }
+    }
+
+    override fun latest(page: Int) = list("$base/api/galleries/all?page=$page")
+
+    override fun search(query: String, page: Int) =
+        list("$base/api/galleries/search?query=${enc(query + exclude)}&page=$page")
+
+    private fun gallery(url: String): JSONObject {
+        val id = Regex("""/g/(\d+)""").find(url)?.groupValues?.get(1)
+            ?: throw IOException("Link galeri tidak valid.")
+        val g = JSONObject(Net.getText("$base/api/gallery/$id"))
+        if (isBlocked(g)) throw IOException("Konten ini tidak ditampilkan.")
+        return g
+    }
+
+    override fun detail(url: String): Detail {
+        val g = gallery(url)
+        val media = g.optString("media_id")
+        val labels = mapOf(
+            "parody" to "Parodi", "character" to "Karakter", "tag" to "Tag", "artist" to "Artis",
+            "group" to "Grup", "language" to "Bahasa", "category" to "Kategori"
+        )
+        val byType = linkedMapOf<String, MutableList<String>>()
+        val tags = g.optJSONArray("tags")
+        if (tags != null) {
+            for (i in 0 until tags.length()) {
+                val t = tags.getJSONObject(i)
+                byType.getOrPut(t.optString("type")) { mutableListOf() }.add(t.optString("name"))
+            }
+        }
+        val info = byType.entries.joinToString("\n") { (k, v) -> "${labels[k] ?: k}: ${v.joinToString(", ")}" }
+        val n = g.optInt("num_pages")
+        return Detail(
+            title(g),
+            "https://t.nhentai.net/galleries/$media/cover.${ext(imgType(g, "cover"))}",
+            "$n halaman\n$info",
+            listOf(Chapter("Baca ($n halaman)", url, ""))
+        )
+    }
+
+    override fun pages(chapterUrl: String): List<String> {
+        val g = gallery(chapterUrl)
+        val media = g.optString("media_id")
+        val pages = g.optJSONObject("images")?.optJSONArray("pages") ?: return emptyList()
+        return (0 until pages.length()).map {
+            "https://i.nhentai.net/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
+        }
+    }
+}
+
 object Sources {
     fun current(): Source? {
         val b = Prefs.baseUrl
         if (b.isEmpty()) return null
-        return if (Prefs.theme == "madara") Madara(b) else MangaThemesia(b)
+        return when (Prefs.theme) {
+            "madara" -> Madara(b)
+            "nhentai" -> Nhentai(b)
+            else -> MangaThemesia(b)
+        }
     }
 
     /** Cek situs, kembalikan (tema, jumlah komik terbaca). */
     fun detect(base: String): Pair<String, Int> {
+        if (base.contains("nhentai", ignoreCase = true)) {
+            val n = Nhentai(base).latest(1).size
+            if (n > 0) return "nhentai" to n
+            throw IOException("Situs terbuka tapi daftar galeri kosong.")
+        }
         val home = Net.get(base)
         val html = home.html()
         val themesia = "themesia" to MangaThemesia(base)
