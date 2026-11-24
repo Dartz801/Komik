@@ -18,7 +18,7 @@ jobs:
           gradle-version: "8.9"
       - name: Build APK
         run: gradle assembleDebug --no-daemon
-          env:
+        env:
           NH_API_KEY: ${{ secrets.NH_API_KEY }}
       - uses: actions/upload-artifact@v4
         with:
