@@ -39,7 +39,7 @@ object Net {
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .cookieJar(WebCookies)
-            .connectTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS) // gagal sambung cepat ketahuan -> segera coba server cadangan
             .readTimeout(40, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request()
@@ -47,6 +47,11 @@ object Net {
                 if (req.header("Referer") == null) {
                     val base = Prefs.baseUrl
                     if (base.isNotEmpty()) b.header("Referer", "$base/")
+                }
+                // API key resmi untuk API v2 (format "nhk_..." -> "Key nhk_...")
+                val key = Prefs.apiKey.trim()
+                if (key.isNotEmpty() && req.url.encodedPath.startsWith("/api/v2")) {
+                    b.header("Authorization", if (key.startsWith("nhk_")) "Key $key" else "User $key")
                 }
                 chain.proceed(b.build())
             }
@@ -105,15 +110,36 @@ object Net {
         }
     }
 
-    /** Mengembalikan (isi respons, URL akhir). */
-    private fun execText(req: Request): Pair<String, String> {
-        client.newCall(req).execute().use { r ->
-            val text = r.body?.string().orEmpty()
-            val cf = r.header("Server")?.contains("cloudflare", true) == true ||
-                text.contains("challenge-platform") || text.contains("Just a moment")
-            if ((r.code == 403 || r.code == 503) && cf) throw CloudflareException()
-            if (!r.isSuccessful) throw IOException("Gagal memuat (kode ${r.code}): ${r.request.url.encodedPath}")
-            return text to r.request.url.toString()
+    /** Permintaan API (GET/POST/DELETE) yang mengembalikan isi respons. */
+    fun api(method: String, url: String): String {
+        val b = Request.Builder().url(url).header("Accept", "application/json")
+        when (method) {
+            "POST" -> b.post("".toRequestBody(null))
+            "DELETE" -> b.delete()
+            else -> b.get()
         }
+        return execText(b.build()).first
+    }
+
+    /** Mengembalikan (isi respons, URL akhir). Jika dibatasi (429), tunggu sebentar lalu coba sekali lagi. */
+    private fun execText(req: Request): Pair<String, String> {
+        for (attempt in 0..1) {
+            client.newCall(req).execute().use { r ->
+                if (r.code == 429 && attempt == 0) {
+                    val wait = r.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 15L) ?: 5L
+                    Thread.sleep(wait * 1000)
+                    return@use
+                }
+                val text = r.body?.string().orEmpty()
+                val cf = r.header("Server")?.contains("cloudflare", true) == true ||
+                    text.contains("challenge-platform") || text.contains("Just a moment")
+                if ((r.code == 403 || r.code == 503) && cf) throw CloudflareException()
+                if (r.code == 429) throw IOException("Terlalu banyak permintaan ke situs. Tunggu sebentar lalu coba lagi.")
+                if (r.code == 401) throw IOException("API key ditolak situs. Periksa API key di Pengaturan.")
+                if (!r.isSuccessful) throw IOException("Gagal memuat (kode ${r.code}): ${r.request.url.encodedPath}")
+                return text to r.request.url.toString()
+            }
+        }
+        throw IOException("Gagal memuat.")
     }
 }

@@ -13,7 +13,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        // API key ditanam saat build dari GitHub Secret "NH_API_KEY" (tidak pernah ditulis di kode).
+        buildConfigField("String", "NH_API_KEY", "\"${System.getenv("NH_API_KEY") ?: ""}\"")
     }
+
+    buildFeatures { buildConfig = true }
 
     // Keystore tetap, supaya APK hasil build baru bisa langsung menimpa versi lama (update tanpa uninstall).
     signingConfigs {

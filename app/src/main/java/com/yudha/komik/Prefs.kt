@@ -40,6 +40,11 @@ object Prefs {
         get() = sp.getString("base", "") ?: ""
         set(v) = sp.edit().putString("base", v).apply()
 
+    /** API key resmi situs (nhentai: "nhk_..."). Dipakai untuk API v2. */
+    var apiKey: String
+        get() = sp.getString("apiKey", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.NH_API_KEY
+        set(v) = sp.edit().putString("apiKey", v.trim()).apply()
+
     /** Batas cache gambar (MB). Berlaku setelah aplikasi dibuka ulang. */
     var cacheMb: Int
         get() = sp.getInt("cacheMb", 500)

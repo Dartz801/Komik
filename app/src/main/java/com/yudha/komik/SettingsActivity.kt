@@ -19,8 +19,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.concurrent.TimeUnit
 
 /** Layar tempat mengisi link situs komik (cukup sekali). */
 class SettingsActivity : AppCompatActivity() {
@@ -34,6 +36,8 @@ class SettingsActivity : AppCompatActivity() {
         val status = findViewById<TextView>(R.id.status)
         val save = findViewById<Button>(R.id.save)
 
+        val keyInput = findViewById<EditText>(R.id.apiKey)
+        keyInput.setText(Prefs.apiKey)
         input.setText(Prefs.baseUrl)
         if (Prefs.baseUrl.isNotEmpty()) status.text = "Sumber aktif: ${Prefs.baseUrl}"
 
@@ -45,6 +49,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             input.setText(base)
             Prefs.baseUrl = base
+            Prefs.apiKey = keyInput.text.toString()
             save.isEnabled = false
             status.text = "Mengecek situs…"
             lifecycleScope.launch {
@@ -56,7 +61,8 @@ class SettingsActivity : AppCompatActivity() {
                         "nhentai" -> "nhentai (API)"
                         else -> "MangaThemesia"
                     }
-                    status.text = "✔ Berhasil! Sumber $name, $n komik terbaca.\nTekan tombol kembali untuk mulai membaca."
+                    val keyInfo = if (Prefs.apiKey.isNotBlank()) "\nAPI key aktif." else ""
+                    status.text = "✔ Berhasil! Sumber $name, $n komik terbaca.$keyInfo\nTekan tombol kembali untuk mulai membaca."
                 } catch (e: Exception) {
                     status.text = "✘ ${e.message}"
                 } finally {
@@ -86,18 +92,36 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    /** Ambil satu sampul, lalu coba sambung ke tiap server gambar dan laporkan hasilnya. */
     private fun testImage(): String {
-        return try {
-            val src = Sources.current() ?: return "Isi link situs dulu."
-            val c = src.latest(1).firstOrNull() ?: return "Daftar komik kosong."
-            if (c.cover.isBlank()) return "Alamat sampul kosong (struktur halaman berubah)."
-            Net.client.newCall(Request.Builder().url(c.cover).build()).execute().use { r ->
-                "Hasil tes gambar:\nKode: ${r.code}\nTipe: ${r.header("Content-Type")}\n" +
-                    "Ukuran: ${r.body?.bytes()?.size ?: 0} byte\nServer: ${r.request.url.host}\nAlamat: ${c.cover}"
-            }
+        val src = Sources.current() ?: return "Isi link situs dulu."
+        val cover = try {
+            src.latest(1).firstOrNull()?.cover.orEmpty()
         } catch (e: Exception) {
-            "Tes gagal: ${e.javaClass.simpleName}: ${e.message}"
+            return "Daftar komik gagal dimuat: ${e.message}"
         }
+        val url = cover.toHttpUrlOrNull() ?: return "Alamat sampul tidak valid: \"$cover\""
+        val plain = OkHttpClient.Builder()
+            .connectTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
+        val m = Regex("""^([it])\d*\.nhentai\.net$""").find(url.host)
+        val hosts = if (m == null) listOf(url.host) else {
+            val p = m.groupValues[1]
+            (listOf(url.host) + listOf("", "1", "2", "3", "4").map { "$p$it.nhentai.net" }).distinct()
+        }
+        val sb = StringBuilder("Hasil tes server gambar:\n")
+        for (h in hosts) {
+            val line = try {
+                val req = Request.Builder().url(url.newBuilder().host(h).build())
+                    .header("User-Agent", Net.UA).header("Referer", Prefs.baseUrl + "/").build()
+                plain.newCall(req).execute().use { r -> "kode ${r.code}" + if (r.isSuccessful) " ✔" else "" }
+            } catch (e: Exception) {
+                "✘ ${e.javaClass.simpleName}"
+            }
+            sb.append("$h : $line\n")
+        }
+        return sb.toString().trimEnd()
     }
 
     @OptIn(ExperimentalCoilApi::class)

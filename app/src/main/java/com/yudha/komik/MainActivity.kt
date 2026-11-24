@@ -183,7 +183,8 @@ class MainActivity : AppCompatActivity() {
         if (item.itemId == R.id.login) {
             val url = Sources.current()?.loginUrl()
             if (url == null) {
-                showMessage("Sumber ini belum mendukung login.")
+                // Sumber berbasis API key: bookmark akun memakai API key dari Pengaturan.
+                startActivity(Intent(this, SettingsActivity::class.java))
             } else {
                 startActivity(
                     Intent(this, WebViewActivity::class.java)
