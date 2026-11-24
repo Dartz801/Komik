@@ -16,6 +16,7 @@ Kalau muncul pesan Cloudflare/verifikasi: tekan **Verifikasi di browser**, tungg
 ## Situs yang didukung
 Situs komik yang memakai tema WordPress **MangaThemesia** atau **Madara**
 (sebagian besar situs komik/manhwa berbahasa Indonesia). Tema terdeteksi otomatis.
+Juga mendukung **nhentai.net** lewat API-nya (isi link `https://nhentai.net`); satu galeri dibuka sebagai satu chapter.
 Kalau situsnya tidak dikenali, parser khusus perlu dibuat untuk situs itu.
 
 ## Fitur
@@ -25,11 +26,9 @@ Kalau situsnya tidak dikenali, parser khusus perlu dibuat untuk situs itu.
 - Riwayat chapter terakhir dibaca per komik
 
 ## Build APK (GitHub Actions)
-1. Pindahkan file `workflow/build.yml` ke `.github/workflows/build.yml` (buat foldernya kalau belum ada).
-   Atau: di GitHub buka tab **Actions → set up a workflow yourself**, lalu tempel isi `workflow/build.yml`.
-2. Buat repo baru di GitHub (mis. `Dartz801/komik`) lalu push isi folder ini.
-3. Buka tab **Actions** → workflow **Build APK Komik** berjalan otomatis setiap push.
-4. Setelah selesai, unduh artifact **Komik-apk**, ekstrak, lalu instal APK-nya di HP.
+1. Buat repo baru di GitHub (mis. `Dartz801/komik`) lalu push isi folder ini.
+2. Buka tab **Actions** → workflow **Build APK Komik** berjalan otomatis setiap push.
+3. Setelah selesai, unduh artifact **Komik-apk**, ekstrak, lalu instal APK-nya di HP.
 
 APK ditandatangani dengan keystore tetap (`app/komik-debug.jks`), jadi versi baru bisa langsung menimpa versi lama.
 

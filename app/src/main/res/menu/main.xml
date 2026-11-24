@@ -8,6 +8,10 @@
         app:actionViewClass="androidx.appcompat.widget.SearchView"
         app:showAsAction="always|collapseActionView" />
     <item
+        android:id="@+id/login"
+        android:title="Login ke situs"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/settings"
         android:title="Pengaturan (link situs)"
         app:showAsAction="never" />
