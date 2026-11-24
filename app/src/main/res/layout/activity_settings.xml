@@ -41,5 +41,40 @@
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="8dp" android:text="Verifikasi di browser" />
+
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="Cache gambar" android:textSize="20sp" android:textStyle="bold" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Gambar yang pernah dibuka disimpan supaya tidak diunduh ulang. Jika penuh, yang paling lama dihapus otomatis." />
+        <TextView
+            android:id="@+id/cacheUsage"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:textStyle="bold" />
+        <RadioGroup
+            android:id="@+id/cacheSize"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" android:orientation="horizontal">
+            <RadioButton
+                android:id="@+id/cache200"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="200 MB" />
+            <RadioButton
+                android:id="@+id/cache500"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="500 MB" />
+            <RadioButton
+                android:id="@+id/cache1024"
+                android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="1 GB" />
+        </RadioGroup>
+        <Button
+            android:id="@+id/clearCache"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Hapus cache gambar" />
     </LinearLayout>
 </ScrollView>

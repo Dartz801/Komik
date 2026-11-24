@@ -7,16 +7,29 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.io.IOException
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class Comic(val title: String, val url: String, val cover: String)
 data class Chapter(val name: String, val url: String, val date: String)
+data class Tag(val name: String, val count: String, val query: String)
+data class TagGroup(val label: String, val tags: List<Tag>)
+
 data class Detail(
     val title: String,
     val cover: String,
     val synopsis: String,
     val chapters: List<Chapter>,
     /** Status bookmark di akun situs: null = belum login / tidak didukung. */
-    val siteFav: Boolean? = null
+    val siteFav: Boolean? = null,
+    val subtitle: String = "",
+    val code: String = "",
+    val tagGroups: List<TagGroup> = emptyList(),
+    /** Thumbnail tiap halaman (untuk grid seperti di web). Kosong = tampilkan daftar chapter. */
+    val thumbs: List<String> = emptyList(),
+    val pageCount: Int = 0,
+    val uploaded: String = ""
 )
 
 /** Data chapter yang sedang dibuka, dipakai bersama Detail -> Reader. */
@@ -248,43 +261,85 @@ class Nhentai(private val base: String) : Source {
         return Triple(doc, id, json)
     }
 
+    private val order = listOf(
+        "parody" to "Parodies", "character" to "Characters", "tag" to "Tags", "artist" to "Artists",
+        "group" to "Groups", "language" to "Languages", "category" to "Categories"
+    )
+    private val typeOfLabel = mapOf(
+        "parodies" to "parody", "characters" to "character", "tags" to "tag", "artists" to "artist",
+        "groups" to "group", "languages" to "language", "categories" to "category"
+    )
+
+    private fun fmtCount(n: Int) = when {
+        n >= 1000 -> "${n / 1000}K"
+        n > 0 -> n.toString()
+        else -> ""
+    }
+
+    /** Host gambar penuh sesuai server thumbnail (t3 -> i3), supaya tidak perlu coba-coba server. */
+    private fun imageHost(thumbs: List<String>): String {
+        val n = thumbs.firstOrNull()?.let { Regex("""//t(\d*)\.nhentai\.net""").find(it)?.groupValues?.get(1) }
+        return if (n != null) "i$n.nhentai.net" else "i.nhentai.net"
+    }
+
     override fun detail(url: String): Detail {
-        val (doc, _, g) = load(url)
-        val labels = mapOf(
-            "parody" to "Parodi", "character" to "Karakter", "tag" to "Tag", "artist" to "Artis",
-            "group" to "Grup", "language" to "Bahasa", "category" to "Kategori"
-        )
-        val byType = linkedMapOf<String, MutableList<String>>()
+        val (doc, id, g) = load(url)
+        val byType = linkedMapOf<String, List<Tag>>()
         var title = doc.selectFirst("#info h1, h1.title")?.text().orEmpty()
+        var subtitle = doc.selectFirst("#info h2, h2.title")?.text().orEmpty()
         var cover = doc.selectFirst("#cover img")?.img().orEmpty()
-        var n = thumbs(doc).size
+        var thumbList = thumbs(doc)
+        var n = thumbList.size
+        var uploaded = doc.selectFirst("#tags time")?.text().orEmpty()
         if (g != null) {
             val t = g.optJSONObject("title")
-            if (t != null) title = t.optString("pretty").ifBlank { t.optString("english") }.ifBlank { title }
+            if (t != null) {
+                title = t.optString("english").ifBlank { t.optString("pretty") }.ifBlank { title }
+                subtitle = t.optString("japanese").ifBlank { subtitle }
+            }
             val media = g.optString("media_id")
             val coverT = g.optJSONObject("images")?.optJSONObject("cover")?.optString("t").orEmpty()
             if (cover.isEmpty()) cover = "https://t.nhentai.net/galleries/$media/cover.${ext(coverT)}"
             n = g.optInt("num_pages", n)
+            val up = g.optLong("upload_date", 0L)
+            if (up > 0) uploaded = SimpleDateFormat("d MMMM yyyy", Locale("id")).format(Date(up * 1000))
             val tags = g.optJSONArray("tags")
             if (tags != null) {
+                val tmp = linkedMapOf<String, MutableList<Tag>>()
                 for (i in 0 until tags.length()) {
                     val tg = tags.getJSONObject(i)
-                    byType.getOrPut(tg.optString("type")) { mutableListOf() }.add(tg.optString("name"))
+                    val type = tg.optString("type")
+                    val name = tg.optString("name")
+                    tmp.getOrPut(type) { mutableListOf() }.add(Tag(name, fmtCount(tg.optInt("count")), "$type:\"$name\""))
+                }
+                byType.putAll(tmp)
+            }
+            if (thumbList.isEmpty()) {
+                val pages = g.optJSONObject("images")?.optJSONArray("pages")
+                if (pages != null) {
+                    thumbList = (0 until pages.length()).map {
+                        "https://t.nhentai.net/galleries/$media/${it + 1}t.${ext(pages.getJSONObject(it).optString("t"))}"
+                    }
                 }
             }
         } else {
             for (box in doc.select("#tags .tag-container")) {
-                val names = box.select("a.tag .name").map { it.text() }
-                if (names.isEmpty()) continue
-                val label = box.ownText().trim().trimEnd(':').lowercase().removeSuffix("s")
-                byType.getOrPut(label) { mutableListOf() }.addAll(names)
+                val type = typeOfLabel[box.ownText().trim().trimEnd(':').lowercase()] ?: continue
+                val tags = box.select("a.tag").map { a ->
+                    val name = a.selectFirst(".name")?.text() ?: a.ownText()
+                    Tag(name, a.selectFirst(".count")?.text().orEmpty(), "$type:\"$name\"")
+                }
+                if (tags.isNotEmpty()) byType[type] = tags
             }
         }
-        val info = byType.entries.joinToString("\n") { (k, v) -> "${labels[k] ?: k}: ${v.joinToString(", ")}" }
+        val groups = order.mapNotNull { (k, label) -> byType[k]?.takeIf { it.isNotEmpty() }?.let { TagGroup(label, it) } }
         // Tombol favorit hanya ada di halaman kalau sudah login.
-        val favBtn = doc.selectFirst("#favorite")
-        val siteFav = favBtn?.text()?.contains("Unfavorite", ignoreCase = true)
-        return Detail(title, cover, "$n halaman\n$info", listOf(Chapter("Baca ($n halaman)", url, "")), siteFav)
+        val siteFav = doc.selectFirst("#favorite")?.text()?.contains("Unfavorite", ignoreCase = true)
+        return Detail(
+            title, cover, "", listOf(Chapter("Baca", url, "")), siteFav,
+            subtitle = subtitle, code = "#$id", tagGroups = groups, thumbs = thumbList,
+            pageCount = n, uploaded = uploaded
+        )
     }
 
     private fun thumbs(doc: Document) =
@@ -329,8 +384,9 @@ class Nhentai(private val base: String) : Source {
         val pages = g?.optJSONObject("images")?.optJSONArray("pages")
         if (g != null && pages != null && pages.length() > 0) {
             val media = g.optString("media_id")
+            val host = imageHost(thumbs(doc))
             return (0 until pages.length()).map {
-                "https://i.nhentai.net/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
+                "https://$host/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
             }
         }
         // Cadangan: thumbnail ".../galleries/<media>/3t.jpg" -> gambar penuh ".../galleries/<media>/3.jpg"

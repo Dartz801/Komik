@@ -8,9 +8,13 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.RadioGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import coil.annotation.ExperimentalCoilApi
+import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +64,8 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
+        setupCache()
+
         findViewById<Button>(R.id.verify).setOnClickListener {
             val base = normalize(input.text.toString()) ?: Prefs.baseUrl
             if (base.isEmpty()) {
@@ -68,6 +74,37 @@ class SettingsActivity : AppCompatActivity() {
             }
             Prefs.baseUrl = base
             startActivity(Intent(this, WebViewActivity::class.java).putExtra("url", base))
+        }
+    }
+
+    @OptIn(ExperimentalCoilApi::class)
+    private fun setupCache() {
+        val usage = findViewById<TextView>(R.id.cacheUsage)
+        val group = findViewById<RadioGroup>(R.id.cacheSize)
+        val ids = mapOf(200 to R.id.cache200, 500 to R.id.cache500, 1024 to R.id.cache1024)
+        group.check(ids[Prefs.cacheMb] ?: R.id.cache500)
+
+        fun refresh() {
+            val used = (imageLoader.diskCache?.size ?: 0L) / (1024 * 1024)
+            usage.text = "Terpakai: $used MB dari ${Prefs.cacheMb} MB"
+        }
+        refresh()
+
+        group.setOnCheckedChangeListener { _, checkedId ->
+            val mb = ids.entries.firstOrNull { it.value == checkedId }?.key ?: return@setOnCheckedChangeListener
+            if (mb == Prefs.cacheMb) return@setOnCheckedChangeListener
+            Prefs.cacheMb = mb
+            refresh()
+            Toast.makeText(this, "Batas cache $mb MB berlaku setelah aplikasi dibuka ulang.", Toast.LENGTH_LONG).show()
+        }
+
+        findViewById<Button>(R.id.clearCache).setOnClickListener {
+            imageLoader.memoryCache?.clear()
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { imageLoader.diskCache?.clear() }
+                refresh()
+                Toast.makeText(this@SettingsActivity, "Cache gambar dihapus.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:padding="3dp">
+    <com.yudha.komik.AspectImageView
+        android:id="@+id/thumb"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="#2B2B2B" android:contentDescription="Halaman"
+        android:scaleType="centerCrop" />
+    <TextView
+        android:id="@+id/num"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end" android:layout_margin="4dp"
+        android:background="#B3000000" android:paddingLeft="5dp" android:paddingRight="5dp"
+        android:textColor="#FFFFFF" android:textSize="11sp" />
+</FrameLayout>

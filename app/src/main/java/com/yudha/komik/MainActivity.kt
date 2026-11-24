@@ -43,6 +43,10 @@ class MainActivity : AppCompatActivity() {
         progress = findViewById(R.id.progress)
         message = findViewById(R.id.message)
         tabs = findViewById(R.id.tabs)
+        intent.getStringExtra("query")?.let {
+            query = it
+            title = it
+        }
 
         adapter = ComicAdapter { c ->
             startActivity(

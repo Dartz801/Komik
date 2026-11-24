@@ -3,6 +3,7 @@ package com.yudha.komik
 import android.webkit.CookieManager
 import okhttp3.Cookie
 import okhttp3.CookieJar
+import okhttp3.Dispatcher
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -12,6 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class CloudflareException :
@@ -36,8 +38,12 @@ object Net {
         }
     }
 
+    /** Host gambar terakhir yang berhasil, per jenis ("i" = gambar penuh, "t" = thumbnail). */
+    private val goodHost = ConcurrentHashMap<String, String>()
+
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .dispatcher(Dispatcher().apply { maxRequests = 64; maxRequestsPerHost = 12 })
             .cookieJar(WebCookies)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
@@ -56,13 +62,17 @@ object Net {
                 val m = Regex("""^([it])\d*\.nhentai\.net$""").find(req.url.host)
                     ?: return@addInterceptor chain.proceed(req)
                 val p = m.groupValues[1]
-                val hosts = listOf(req.url.host) +
-                    listOf("", "1", "2", "3", "4").map { "$p$it.nhentai.net" }.filter { it != req.url.host }
+                val hosts = (listOfNotNull(goodHost[p], req.url.host) +
+                    listOf("", "1", "2", "3", "4", "5", "7").map { "$p$it.nhentai.net" }).distinct()
                 var lastErr: IOException? = null
                 for ((i, h) in hosts.withIndex()) {
                     try {
                         val r = chain.proceed(req.newBuilder().url(req.url.newBuilder().host(h).build()).build())
-                        if (r.isSuccessful || i == hosts.lastIndex) return@addInterceptor r
+                        if (r.isSuccessful) {
+                            goodHost[p] = h
+                            return@addInterceptor r
+                        }
+                        if (i == hosts.lastIndex) return@addInterceptor r
                         r.close()
                     } catch (e: IOException) {
                         lastErr = e

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.disk.DiskCache
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,7 +16,17 @@ class App : Application(), ImageLoaderFactory {
 
     // Gambar diambil lewat OkHttp yang sama (User-Agent, Referer, cookie).
     override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this).okHttpClient { Net.client }.crossfade(true).build()
+        ImageLoader.Builder(this)
+            .okHttpClient { Net.client }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(Prefs.cacheMb * 1024L * 1024) // batas cache, diatur di Pengaturan
+                    .build()
+            }
+            .respectCacheHeaders(false)
+            .crossfade(150)
+            .build()
 
     companion object {
         lateinit var instance: App
@@ -29,6 +40,11 @@ object Prefs {
     var baseUrl: String
         get() = sp.getString("base", "") ?: ""
         set(v) = sp.edit().putString("base", v).apply()
+
+    /** Batas cache gambar (MB). Berlaku setelah aplikasi dibuka ulang. */
+    var cacheMb: Int
+        get() = sp.getInt("cacheMb", 500)
+        set(v) = sp.edit().putInt("cacheMb", v).apply()
 
     var theme: String
         get() = sp.getString("theme", "themesia") ?: "themesia"

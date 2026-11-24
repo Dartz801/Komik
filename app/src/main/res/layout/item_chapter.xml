@@ -6,9 +6,9 @@
     <TextView
         android:id="@+id/name"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:textSize="15sp" />
+        android:textColor="#D9D9D9" android:textSize="15sp" />
     <TextView
         android:id="@+id/date"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:alpha="0.6" android:textSize="12sp" />
+        android:alpha="0.6" android:textColor="#D9D9D9" android:textSize="12sp" />
 </LinearLayout>

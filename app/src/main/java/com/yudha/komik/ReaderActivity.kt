@@ -1,5 +1,6 @@
 package com.yudha.komik
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -14,7 +15,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import coil.imageLoader
 import coil.load
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +31,7 @@ class ReaderActivity : AppCompatActivity() {
     private var job: Job? = null
     private var source: Source? = null
     private var needReload = false
+    private var startPage = 0
     private lateinit var rv: RecyclerView
     private lateinit var bar: View
     private lateinit var progress: ProgressBar
@@ -54,7 +59,9 @@ class ReaderActivity : AppCompatActivity() {
         next = findViewById(R.id.next)
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = pages
+        rv.setItemViewCacheSize(4)
         source = src
+        startPage = intent.getIntExtra("page", 0)
 
         // Daftar chapter dari situs urut terbaru -> terlama.
         prev.setOnClickListener { open(src, index + 1) }
@@ -89,7 +96,8 @@ class ReaderActivity : AppCompatActivity() {
             try {
                 val list = withContext(Dispatchers.IO) { src.pages(ch.url) }
                 pages.set(list)
-                rv.scrollToPosition(0)
+                rv.scrollToPosition(startPage.coerceIn(0, maxOf(0, list.size - 1)))
+                startPage = 0
                 if (list.isEmpty()) {
                     message.text = "Gambar chapter tidak ditemukan."
                     message.visibility = View.VISIBLE
@@ -115,6 +123,7 @@ class ReaderActivity : AppCompatActivity() {
 
 class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdapter.VH>() {
     private val items = mutableListOf<String>()
+    private val preloaded = HashSet<String>()
 
     class VH(val img: ImageView) : RecyclerView.ViewHolder(img)
 
@@ -123,7 +132,22 @@ class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdap
 
     override fun getItemCount() = items.size
 
-    override fun onBindViewHolder(h: VH, i: Int) = bind(h.img, items[i])
+    override fun onBindViewHolder(h: VH, i: Int) {
+        bind(h.img, items[i])
+        preload(h.img.context, i + 1)
+    }
+
+    /** Unduh beberapa halaman berikutnya lebih dulu (ke cache disk) supaya scroll tidak menunggu. */
+    private fun preload(ctx: Context, from: Int) {
+        for (j in from until minOf(from + 5, items.size)) {
+            val u = items[j]
+            if (preloaded.add(u)) {
+                ctx.imageLoader.enqueue(
+                    ImageRequest.Builder(ctx).data(u).memoryCachePolicy(CachePolicy.DISABLED).build()
+                )
+            }
+        }
+    }
 
     private fun bind(iv: ImageView, url: String) {
         iv.minimumHeight = (iv.resources.displayMetrics.density * 400).toInt()
@@ -138,6 +162,7 @@ class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdap
     }
 
     fun set(list: List<String>) {
+        preloaded.clear()
         items.clear()
         items.addAll(list)
         notifyDataSetChanged()
