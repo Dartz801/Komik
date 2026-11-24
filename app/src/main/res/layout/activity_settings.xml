@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Link situs komik" android:textSize="20sp" android:textStyle="bold" />
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Tempel alamat situs komik di bawah (cukup halaman utamanya, misalnya https://namasitus.com), lalu tekan Simpan &amp; Cek.\n\nCukup diisi sekali — link tersimpan di aplikasi. Ganti hanya jika situs pindah domain atau Anda ingin memakai situs lain." />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:hint="https://…">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/url"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:inputType="textUri" android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:text="Simpan &amp; Cek" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="Kalau muncul pesan verifikasi / Cloudflare, buka situsnya sekali di sini sampai tampil normal, lalu tekan Selesai." />
+        <Button
+            android:id="@+id/verify"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Verifikasi di browser" />
+    </LinearLayout>
+</ScrollView>
