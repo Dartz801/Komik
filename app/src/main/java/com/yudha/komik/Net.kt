@@ -39,7 +39,7 @@ object Net {
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .cookieJar(WebCookies)
-            .connectTimeout(8, TimeUnit.SECONDS) // gagal sambung cepat ketahuan -> segera coba server cadangan
+            .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(40, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request()
@@ -61,8 +61,9 @@ object Net {
                 val m = Regex("""^([it])\d*\.nhentai\.net$""").find(req.url.host)
                     ?: return@addInterceptor chain.proceed(req)
                 val p = m.groupValues[1]
-                val hosts = listOf(req.url.host) +
-                    listOf("", "1", "2", "3", "4").map { "$p$it.nhentai.net" }.filter { it != req.url.host }
+                // Maksimal 1 server cadangan per gambar, supaya tidak membanjiri server (bisa memicu blokir IP).
+                val alt = if (req.url.host == "$p.nhentai.net") "${p}1.nhentai.net" else "$p.nhentai.net"
+                val hosts = listOf(req.url.host, alt)
                 var lastErr: IOException? = null
                 for ((i, h) in hosts.withIndex()) {
                     try {

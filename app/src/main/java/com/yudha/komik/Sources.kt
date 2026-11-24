@@ -266,7 +266,7 @@ class Nhentai(private val base: String) : Source {
             if (ids != null && (0 until ids.length()).any { ids.optInt(it) in blockedTagIds }) continue
             val id = g.opt("id")?.toString() ?: continue
             val title = g.optString("english_title").ifBlank { g.optString("japanese_title") }
-            out.add(Comic(title, "$base/g/$id/", join(thumbServers, i, g.optString("thumbnail"))))
+            out.add(Comic(title, "$base/g/$id/", join(thumbServers, 0, g.optString("thumbnail"))))
         }
         return out
     }
@@ -335,7 +335,7 @@ class Nhentai(private val base: String) : Source {
         val groups = order.mapNotNull { (k, label) -> byType[k]?.takeIf { it.isNotEmpty() }?.let { TagGroup(label, it) } }
         val pages = g.optJSONArray("pages")
         val thumbs = if (pages == null) emptyList() else (0 until pages.length()).map {
-            join(thumbServers, it, pathOf(pages.getJSONObject(it), "thumbnail"))
+            join(thumbServers, 0, pathOf(pages.getJSONObject(it), "thumbnail"))
         }.filter { it.isNotEmpty() }
         val up = g.optLong("upload_date", 0L)
         val uploaded = if (up > 0) SimpleDateFormat("d MMMM yyyy", Locale("id")).format(Date(up * 1000)) else ""
@@ -352,7 +352,7 @@ class Nhentai(private val base: String) : Source {
         val g = gallery(chapterUrl)
         cdn()
         val pages = g.optJSONArray("pages") ?: return emptyList()
-        return (0 until pages.length()).map { join(imageServers, it, pathOf(pages.getJSONObject(it), "path")) }
+        return (0 until pages.length()).map { join(imageServers, 0, pathOf(pages.getJSONObject(it), "path")) }
             .filter { it.isNotEmpty() }
     }
 }
