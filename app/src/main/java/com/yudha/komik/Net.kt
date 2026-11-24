@@ -1,14 +1,19 @@
 package com.yudha.komik
 
+import android.content.Context
 import android.webkit.CookieManager
+import com.google.android.gms.net.CronetProviderInstaller
+import com.google.net.cronet.okhttptransport.CronetInterceptor
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.HttpUrl
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.chromium.net.CronetEngine
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.io.IOException
@@ -75,6 +80,45 @@ object Net {
                     }
                 }
                 throw lastErr ?: IOException("Gambar gagal dimuat.")
+            }
+            .build()
+    }
+
+    // ---------- Gambar lewat mesin jaringan Chrome (Cronet) ----------
+
+    @Volatile private var cronetBridge: Interceptor? = null
+
+    /** Engine Cronet aktif? (dipakai untuk info di Pengaturan) */
+    val cronetActive get() = cronetBridge != null
+
+    /** Pasang Cronet dari Google Play Services. Kalau tidak tersedia, gambar tetap lewat OkHttp biasa. */
+    fun initCronet(ctx: Context) {
+        try {
+            CronetProviderInstaller.installProvider(ctx).addOnCompleteListener { task ->
+                if (!task.isSuccessful) return@addOnCompleteListener
+                try {
+                    val engine = CronetEngine.Builder(ctx)
+                        .enableQuic(true)
+                        .enableHttp2(true)
+                        .enableBrotli(true)
+                        .setUserAgent(UA)
+                        .build()
+                    cronetBridge = CronetInterceptor.newBuilder(engine).build()
+                } catch (e: Throwable) {
+                    cronetBridge = null
+                }
+            }
+        } catch (e: Throwable) {
+            cronetBridge = null
+        }
+    }
+
+    /** Klien khusus gambar: header & cadangan server tetap dari [client], koneksinya lewat Cronet bila tersedia. */
+    val imageClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .addInterceptor { chain ->
+                val bridge = cronetBridge
+                if (bridge != null) bridge.intercept(chain) else chain.proceed(chain.request())
             }
             .build()
     }

@@ -49,4 +49,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("io.coil-kt:coil:2.6.0")
+    // Mesin jaringan Chrome (Cronet) dari Google Play Services, untuk memuat gambar seperti di browser
+    implementation("com.google.android.gms:play-services-cronet:18.0.1")
+    implementation("com.google.net.cronet:cronet-okhttp:0.1.0")
+    implementation("org.chromium.net:cronet-api:119.6045.31")
 }

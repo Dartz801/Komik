@@ -12,12 +12,13 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Net.initCronet(this)
     }
 
     // Gambar diambil lewat OkHttp yang sama (User-Agent, Referer, cookie).
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .okHttpClient { Net.client }
+            .okHttpClient { Net.imageClient }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))

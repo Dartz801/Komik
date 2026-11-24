@@ -19,10 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import java.util.concurrent.TimeUnit
 
 /** Layar tempat mengisi link situs komik (cukup sekali). */
 class SettingsActivity : AppCompatActivity() {
@@ -92,7 +90,7 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    /** Ambil satu sampul, lalu coba sambung ke tiap server gambar dan laporkan hasilnya. */
+    /** Ambil satu sampul lewat jalur yang sama dengan aplikasi (Cronet bila aktif), lalu laporkan hasilnya. */
     private fun testImage(): String {
         val src = Sources.current() ?: return "Isi link situs dulu."
         val cover = try {
@@ -100,28 +98,17 @@ class SettingsActivity : AppCompatActivity() {
         } catch (e: Exception) {
             return "Daftar komik gagal dimuat: ${e.message}"
         }
-        val url = cover.toHttpUrlOrNull() ?: return "Alamat sampul tidak valid: \"$cover\""
-        val plain = OkHttpClient.Builder()
-            .connectTimeout(6, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build()
-        val m = Regex("""^([it])\d*\.nhentai\.net$""").find(url.host)
-        val hosts = if (m == null) listOf(url.host) else {
-            val p = m.groupValues[1]
-            (listOf(url.host) + listOf("", "1", "2", "3", "4").map { "$p$it.nhentai.net" }).distinct()
-        }
-        val sb = StringBuilder("Hasil tes server gambar:\n")
-        for (h in hosts) {
-            val line = try {
-                val req = Request.Builder().url(url.newBuilder().host(h).build())
-                    .header("User-Agent", Net.UA).header("Referer", Prefs.baseUrl + "/").build()
-                plain.newCall(req).execute().use { r -> "kode ${r.code}" + if (r.isSuccessful) " ✔" else "" }
-            } catch (e: Exception) {
-                "✘ ${e.javaClass.simpleName}"
+        if (cover.isBlank()) return "Alamat sampul kosong."
+        val engine = if (Net.cronetActive) "Cronet (mesin Chrome)" else "OkHttp biasa (Cronet belum aktif)"
+        return try {
+            Net.imageClient.newCall(Request.Builder().url(cover).build()).execute().use { r ->
+                val size = r.body?.bytes()?.size ?: 0
+                "Hasil tes gambar:\nJalur: $engine\nKode: ${r.code}" + (if (r.isSuccessful) " ✔" else "") +
+                    "\nUkuran: $size byte\nServer: ${r.request.url.host}"
             }
-            sb.append("$h : $line\n")
+        } catch (e: Exception) {
+            "Hasil tes gambar:\nJalur: $engine\n✘ ${e.javaClass.simpleName}: ${e.message}"
         }
-        return sb.toString().trimEnd()
     }
 
     @OptIn(ExperimentalCoilApi::class)
