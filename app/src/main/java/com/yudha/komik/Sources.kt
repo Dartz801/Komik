@@ -276,12 +276,6 @@ class Nhentai(private val base: String) : Source {
         else -> ""
     }
 
-    /** Host gambar penuh sesuai server thumbnail (t3 -> i3), supaya tidak perlu coba-coba server. */
-    private fun imageHost(thumbs: List<String>): String {
-        val n = thumbs.firstOrNull()?.let { Regex("""//t(\d*)\.nhentai\.net""").find(it)?.groupValues?.get(1) }
-        return if (n != null) "i$n.nhentai.net" else "i.nhentai.net"
-    }
-
     override fun detail(url: String): Detail {
         val (doc, id, g) = load(url)
         val byType = linkedMapOf<String, List<Tag>>()
@@ -384,9 +378,8 @@ class Nhentai(private val base: String) : Source {
         val pages = g?.optJSONObject("images")?.optJSONArray("pages")
         if (g != null && pages != null && pages.length() > 0) {
             val media = g.optString("media_id")
-            val host = imageHost(thumbs(doc))
             return (0 until pages.length()).map {
-                "https://$host/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
+                "https://i.nhentai.net/galleries/$media/${it + 1}.${ext(pages.getJSONObject(it).optString("t"))}"
             }
         }
         // Cadangan: thumbnail ".../galleries/<media>/3t.jpg" -> gambar penuh ".../galleries/<media>/3.jpg"

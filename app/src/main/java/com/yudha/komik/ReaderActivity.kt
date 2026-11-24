@@ -1,6 +1,5 @@
 package com.yudha.komik
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -15,10 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import coil.imageLoader
 import coil.load
-import coil.request.CachePolicy
-import coil.request.ImageRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -59,7 +55,6 @@ class ReaderActivity : AppCompatActivity() {
         next = findViewById(R.id.next)
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = pages
-        rv.setItemViewCacheSize(4)
         source = src
         startPage = intent.getIntExtra("page", 0)
 
@@ -123,7 +118,6 @@ class ReaderActivity : AppCompatActivity() {
 
 class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdapter.VH>() {
     private val items = mutableListOf<String>()
-    private val preloaded = HashSet<String>()
 
     class VH(val img: ImageView) : RecyclerView.ViewHolder(img)
 
@@ -132,22 +126,7 @@ class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdap
 
     override fun getItemCount() = items.size
 
-    override fun onBindViewHolder(h: VH, i: Int) {
-        bind(h.img, items[i])
-        preload(h.img.context, i + 1)
-    }
-
-    /** Unduh beberapa halaman berikutnya lebih dulu (ke cache disk) supaya scroll tidak menunggu. */
-    private fun preload(ctx: Context, from: Int) {
-        for (j in from until minOf(from + 5, items.size)) {
-            val u = items[j]
-            if (preloaded.add(u)) {
-                ctx.imageLoader.enqueue(
-                    ImageRequest.Builder(ctx).data(u).memoryCachePolicy(CachePolicy.DISABLED).build()
-                )
-            }
-        }
-    }
+    override fun onBindViewHolder(h: VH, i: Int) = bind(h.img, items[i])
 
     private fun bind(iv: ImageView, url: String) {
         iv.minimumHeight = (iv.resources.displayMetrics.density * 400).toInt()
@@ -162,7 +141,6 @@ class PageAdapter(private val onTap: () -> Unit) : RecyclerView.Adapter<PageAdap
     }
 
     fun set(list: List<String>) {
-        preloaded.clear()
         items.clear()
         items.addAll(list)
         notifyDataSetChanged()
