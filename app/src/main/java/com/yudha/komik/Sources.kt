@@ -1,5 +1,6 @@
 package com.yudha.komik
 
+import android.webkit.CookieManager
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
@@ -9,7 +10,14 @@ import java.net.URLEncoder
 
 data class Comic(val title: String, val url: String, val cover: String)
 data class Chapter(val name: String, val url: String, val date: String)
-data class Detail(val title: String, val cover: String, val synopsis: String, val chapters: List<Chapter>)
+data class Detail(
+    val title: String,
+    val cover: String,
+    val synopsis: String,
+    val chapters: List<Chapter>,
+    /** Status bookmark di akun situs: null = belum login / tidak didukung. */
+    val siteFav: Boolean? = null
+)
 
 /** Data chapter yang sedang dibuka, dipakai bersama Detail -> Reader. */
 object Session {
@@ -22,6 +30,17 @@ interface Source {
     fun search(query: String, page: Int): List<Comic>
     fun detail(url: String): Detail
     fun pages(chapterUrl: String): List<String>
+
+    /** Bookmark/favorit di akun situs (butuh login). */
+    fun siteFavorites(page: Int): List<Comic> =
+        throw IOException("Sumber ini belum mendukung bookmark situs.")
+
+    /** Halaman login situs. */
+    fun loginUrl(): String? = null
+
+    /** Tambah/hapus bookmark di akun situs. Mengembalikan status terbaru. */
+    fun setSiteFavorite(url: String, add: Boolean): Boolean =
+        throw IOException("Sumber ini belum mendukung bookmark situs.")
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
@@ -208,10 +227,8 @@ class Nhentai(private val base: String) : Source {
         }
         return try {
             JSONObject(Net.getText("$base/api/gallery/$id"))
-        } catch (e: CloudflareException) {
-            throw e
         } catch (e: Exception) {
-            null
+            null // API diblokir/404: lanjut pakai data dari halaman
         }
     }
 
@@ -238,9 +255,9 @@ class Nhentai(private val base: String) : Source {
             "group" to "Grup", "language" to "Bahasa", "category" to "Kategori"
         )
         val byType = linkedMapOf<String, MutableList<String>>()
-        var title = doc.selectFirst("#info h1")?.text().orEmpty()
+        var title = doc.selectFirst("#info h1, h1.title")?.text().orEmpty()
         var cover = doc.selectFirst("#cover img")?.img().orEmpty()
-        var n = doc.select("#thumbnail-container .thumb-container").size
+        var n = thumbs(doc).size
         if (g != null) {
             val t = g.optJSONObject("title")
             if (t != null) title = t.optString("pretty").ifBlank { t.optString("english") }.ifBlank { title }
@@ -264,7 +281,47 @@ class Nhentai(private val base: String) : Source {
             }
         }
         val info = byType.entries.joinToString("\n") { (k, v) -> "${labels[k] ?: k}: ${v.joinToString(", ")}" }
-        return Detail(title, cover, "$n halaman\n$info", listOf(Chapter("Baca ($n halaman)", url, "")))
+        // Tombol favorit hanya ada di halaman kalau sudah login.
+        val favBtn = doc.selectFirst("#favorite")
+        val siteFav = favBtn?.text()?.contains("Unfavorite", ignoreCase = true)
+        return Detail(title, cover, "$n halaman\n$info", listOf(Chapter("Baca ($n halaman)", url, "")), siteFav)
+    }
+
+    private fun thumbs(doc: Document) =
+        doc.select("#thumbnail-container img, .thumbs img, a.gallerythumb img").map { it.img() }
+            .filter { it.contains("/galleries/") }.distinct()
+
+    override fun loginUrl() = "$base/login/"
+
+    override fun setSiteFavorite(url: String, add: Boolean): Boolean {
+        val id = galleryId(url)
+        val page = "$base/g/$id/"
+        // Token CSRF: dari halaman galeri, cadangan dari cookie "csrftoken".
+        val html = Net.get(page).html()
+        var token = Regex("""csrf_token\W+([A-Za-z0-9]{20,})""").findAll(html).lastOrNull()?.groupValues?.get(1)
+        if (token == null) {
+            token = CookieManager.getInstance().getCookie(base)?.split(";")
+                ?.map { it.trim() }?.firstOrNull { it.startsWith("csrftoken=") }?.substringAfter("=")
+        }
+        val tok: String = token ?: ""
+        if (tok.isEmpty()) throw IOException("Belum login. Buka menu ⋮ → Login ke situs.")
+        val resp = Net.postText(
+            "$base/api/gallery/$id/${if (add) "" else "un"}favorite",
+            mapOf("Referer" to page, "X-CSRFToken" to tok, "X-Requested-With" to "XMLHttpRequest")
+        )
+        return try {
+            JSONObject(resp).optBoolean("favorited", add)
+        } catch (e: Exception) {
+            resp.contains("true")
+        }
+    }
+
+    override fun siteFavorites(page: Int): List<Comic> {
+        val doc = Net.get("$base/favorites/?page=$page")
+        if (doc.location().contains("/login")) {
+            throw IOException("Belum login. Buka menu ⋮ → Login ke situs.")
+        }
+        return list(doc)
     }
 
     override fun pages(chapterUrl: String): List<String> {
@@ -277,8 +334,7 @@ class Nhentai(private val base: String) : Source {
             }
         }
         // Cadangan: thumbnail ".../galleries/<media>/3t.jpg" -> gambar penuh ".../galleries/<media>/3.jpg"
-        return doc.select("#thumbnail-container img").map { it.img() }
-            .filter { it.contains("/galleries/") }
+        return thumbs(doc)
             .map { u ->
                 u.replace(Regex("""//t(\d*)\."""), "//i$1.")
                     .replace(Regex("""/(\d+)t\.(\w+)$"""), "/$1.$2")

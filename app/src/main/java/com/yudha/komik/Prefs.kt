@@ -55,6 +55,11 @@ object Prefs {
         return !removed
     }
 
+    /** Pasang status favorit di HP secara langsung (dipakai saat sinkron dengan akun situs). */
+    fun setFav(c: Comic, on: Boolean) {
+        if (isFav(c.url) != on) toggleFav(c)
+    }
+
     fun lastRead(comicUrl: String): String? = sp.getString("last:$comicUrl", null)
 
     fun setLastRead(comicUrl: String, chapterUrl: String) =

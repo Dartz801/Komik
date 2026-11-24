@@ -27,6 +27,7 @@ object Net {
         override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
             val cm = CookieManager.getInstance()
             cookies.forEach { cm.setCookie(url.toString(), it.toString()) }
+            cm.flush() // simpan ke penyimpanan supaya sesi login bertahan setelah aplikasi ditutup
         }
 
         override fun loadForRequest(url: HttpUrl): List<Cookie> {
@@ -88,6 +89,20 @@ object Net {
             Request.Builder().url(url).post(body).header("X-Requested-With", "XMLHttpRequest").build()
         )
         return Jsoup.parse(html, finalUrl)
+    }
+
+    /** POST kosong dengan header tambahan, mengembalikan isi respons. */
+    fun postText(url: String, headers: Map<String, String>): String {
+        val b = Request.Builder().url(url).post("".toRequestBody(null))
+        headers.forEach { (k, v) -> b.header(k, v) }
+        try {
+            return execText(b.build()).first
+        } catch (e: IOException) {
+            if (e.message?.contains("kode 403") == true || e.message?.contains("kode 401") == true) {
+                throw IOException("Ditolak situs. Pastikan sudah login (menu ⋮ → Login ke situs).")
+            }
+            throw e
+        }
     }
 
     /** Mengembalikan (isi respons, URL akhir). */

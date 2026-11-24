@@ -1,5 +1,6 @@
 package com.yudha.komik
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -24,6 +25,8 @@ import kotlinx.coroutines.withContext
 class ReaderActivity : AppCompatActivity() {
     private var index = 0
     private var job: Job? = null
+    private var source: Source? = null
+    private var needReload = false
     private lateinit var rv: RecyclerView
     private lateinit var bar: View
     private lateinit var progress: ProgressBar
@@ -51,11 +54,21 @@ class ReaderActivity : AppCompatActivity() {
         next = findViewById(R.id.next)
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = pages
+        source = src
 
         // Daftar chapter dari situs urut terbaru -> terlama.
         prev.setOnClickListener { open(src, index + 1) }
         next.setOnClickListener { open(src, index - 1) }
         open(src, intent.getIntExtra("index", 0))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val src = source
+        if (needReload && src != null) {
+            needReload = false
+            open(src, index)
+        }
     }
 
     private fun open(src: Source, i: Int) {
@@ -69,6 +82,7 @@ class ReaderActivity : AppCompatActivity() {
         Prefs.setLastRead(Session.comicUrl, ch.url)
         pages.set(emptyList())
         message.visibility = View.GONE
+        message.setOnClickListener(null)
         progress.visibility = View.VISIBLE
         job?.cancel()
         job = lifecycleScope.launch {
@@ -82,6 +96,13 @@ class ReaderActivity : AppCompatActivity() {
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: CloudflareException) {
+                message.text = "Situs meminta verifikasi.\n\nKetuk di sini untuk verifikasi, lalu tekan Selesai."
+                message.visibility = View.VISIBLE
+                message.setOnClickListener {
+                    needReload = true
+                    startActivity(Intent(this@ReaderActivity, WebViewActivity::class.java).putExtra("url", ch.url))
+                }
             } catch (e: Exception) {
                 message.text = e.message ?: e.toString()
                 message.visibility = View.VISIBLE

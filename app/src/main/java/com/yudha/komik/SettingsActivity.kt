@@ -93,7 +93,8 @@ class WebViewActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_webview)
-        title = "Verifikasi situs"
+        title = intent.getStringExtra("title") ?: "Verifikasi situs"
+        intent.getStringExtra("hint")?.let { findViewById<TextView>(R.id.hint).text = it }
         val wv = findViewById<WebView>(R.id.web)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true

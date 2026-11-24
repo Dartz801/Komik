@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var message: TextView
     private lateinit var tabs: TabLayout
-    private var tab = 0 // 0 = Terbaru, 1 = Favorit
+    private var tab = 0 // 0 = Terbaru, 1 = Favorit (di HP), 2 = Bookmark situs (akun)
     private var query: String? = null
     private var page = 1
     private var loading = false
@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
         rv.adapter = adapter
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) {
-                if (tab == 0 && dy > 0 && !loading && hasMore &&
+                if (tab != 1 && dy > 0 && !loading && hasMore &&
                     glm.findLastVisibleItemPosition() >= adapter.itemCount - 6
                 ) load(false)
             }
@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
-        if (loadedBase != Prefs.baseUrl || tab == 1) {
+        if (loadedBase != Prefs.baseUrl || tab != 0) {
             loadedBase = Prefs.baseUrl
             load(true)
         }
@@ -114,13 +114,23 @@ class MainActivity : AppCompatActivity() {
         job = lifecycleScope.launch {
             try {
                 val list = withContext(Dispatchers.IO) {
-                    if (q.isNullOrBlank()) src.latest(p) else src.search(q, p)
+                    when {
+                        tab == 2 -> src.siteFavorites(p)
+                        q.isNullOrBlank() -> src.latest(p)
+                        else -> src.search(q, p)
+                    }
                 }
                 if (list.isEmpty()) hasMore = false
                 if (p == 1) adapter.set(list) else adapter.add(list)
                 page = p + 1
                 if (adapter.itemCount == 0) {
-                    showMessage(if (q.isNullOrBlank()) "Tidak ada komik ditemukan." else "Tidak ada hasil untuk \"$q\".")
+                    showMessage(
+                        when {
+                            tab == 2 -> "Bookmark di akun situs masih kosong."
+                            q.isNullOrBlank() -> "Tidak ada komik ditemukan."
+                            else -> "Tidak ada hasil untuk \"$q\"."
+                        }
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -164,6 +174,20 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.settings) {
             startActivity(Intent(this, SettingsActivity::class.java))
+            return true
+        }
+        if (item.itemId == R.id.login) {
+            val url = Sources.current()?.loginUrl()
+            if (url == null) {
+                showMessage("Sumber ini belum mendukung login.")
+            } else {
+                startActivity(
+                    Intent(this, WebViewActivity::class.java)
+                        .putExtra("url", url)
+                        .putExtra("title", "Login ke situs")
+                        .putExtra("hint", "Login seperti biasa di situsnya. Setelah berhasil masuk, tekan Selesai.")
+                )
+            }
             return true
         }
         return super.onOptionsItemSelected(item)

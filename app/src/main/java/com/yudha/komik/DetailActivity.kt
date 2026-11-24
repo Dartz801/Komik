@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -38,17 +39,38 @@ class DetailActivity : AppCompatActivity() {
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = adapter
 
+        load()
+    }
+
+    private var needReload = false
+
+    private fun src(): Source = Sources.current() ?: throw IllegalStateException("Link situs belum diisi.")
+
+    private fun load() {
         val src = Sources.current() ?: run { finish(); return }
         val progress = findViewById<ProgressBar>(R.id.progress)
         val message = findViewById<TextView>(R.id.message)
+        message.visibility = View.GONE
+        message.setOnClickListener(null)
         progress.visibility = View.VISIBLE
         lifecycleScope.launch {
             try {
-                detail = withContext(Dispatchers.IO) { src.detail(comic.url) }
+                val d = withContext(Dispatchers.IO) { src.detail(comic.url) }
+                detail = d
+                if (d.siteFav != null) {
+                    Prefs.setFav(comic.copy(title = d.title.ifBlank { comic.title }, cover = d.cover.ifBlank { comic.cover }), d.siteFav)
+                }
                 adapter.notifyDataSetChanged()
                 if (detail?.chapters.isNullOrEmpty()) {
                     message.text = "Chapter tidak ditemukan."
                     message.visibility = View.VISIBLE
+                }
+            } catch (e: CloudflareException) {
+                message.text = "Situs meminta verifikasi.\n\nKetuk di sini untuk verifikasi, lalu tekan Selesai."
+                message.visibility = View.VISIBLE
+                message.setOnClickListener {
+                    needReload = true
+                    startActivity(Intent(this@DetailActivity, WebViewActivity::class.java).putExtra("url", comic.url))
                 }
             } catch (e: Exception) {
                 message.text = e.message ?: e.toString()
@@ -62,6 +84,10 @@ class DetailActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         adapter.notifyDataSetChanged() // perbarui tanda "terakhir dibaca"
+        if (needReload) {
+            needReload = false
+            load()
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -97,10 +123,30 @@ class DetailActivity : AppCompatActivity() {
                 v.findViewById<TextView>(R.id.synopsis).text = d?.synopsis.orEmpty()
 
                 val fav = v.findViewById<Button>(R.id.fav)
-                fav.text = if (Prefs.isFav(comic.url)) "★ Favorit" else "☆ Favorit"
+                val c = comic.copy(title = d?.title?.ifBlank { null } ?: comic.title, cover = cover)
+                val synced = d?.siteFav != null // sudah login: favorit ikut akun situs
+                val star = { on: Boolean -> (if (on) "★ Favorit" else "☆ Favorit") + if (synced) " (akun)" else "" }
+                fav.text = star(Prefs.isFav(comic.url))
                 fav.setOnClickListener {
-                    val c = comic.copy(title = d?.title?.ifBlank { null } ?: comic.title, cover = cover)
-                    fav.text = if (Prefs.toggleFav(c)) "★ Favorit" else "☆ Favorit"
+                    if (!synced) {
+                        fav.text = star(Prefs.toggleFav(c))
+                        return@setOnClickListener
+                    }
+                    val want = !Prefs.isFav(comic.url)
+                    fav.isEnabled = false
+                    fav.text = "Menyimpan ke akun…"
+                    lifecycleScope.launch {
+                        try {
+                            val now = withContext(Dispatchers.IO) { src().setSiteFavorite(comic.url, want) }
+                            Prefs.setFav(c, now)
+                            fav.text = star(now)
+                        } catch (e: Exception) {
+                            fav.text = star(Prefs.isFav(comic.url))
+                            Toast.makeText(this@DetailActivity, e.message ?: e.toString(), Toast.LENGTH_LONG).show()
+                        } finally {
+                            fav.isEnabled = true
+                        }
+                    }
                 }
 
                 val chapters = d?.chapters.orEmpty()
