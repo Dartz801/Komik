@@ -12,6 +12,10 @@
         android:title="Akun / API key"
         app:showAsAction="never" />
     <item
+        android:id="@+id/clearHistory"
+        android:title="Hapus riwayat"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/settings"
         android:title="Pengaturan (link situs)"
         app:showAsAction="never" />

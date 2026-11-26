@@ -91,6 +91,38 @@ object Prefs {
         if (isFav(c.url) != on) toggleFav(c)
     }
 
+    /** Halaman terakhir yang dibaca (0 = halaman pertama), per chapter/galeri. */
+    fun lastPage(chapterUrl: String): Int = sp.getInt("page:$chapterUrl", 0)
+
+    fun setLastPage(chapterUrl: String, page: Int) = sp.edit().putInt("page:$chapterUrl", page).apply()
+
+    /** Riwayat baca, terbaru di depan. */
+    fun history(): List<Comic> {
+        val arr = JSONArray(sp.getString("hist", "[]"))
+        return (0 until arr.length()).map {
+            val o = arr.getJSONObject(it)
+            Comic(o.getString("t"), o.getString("u"), o.optString("c"))
+        }
+    }
+
+    fun addHistory(c: Comic) {
+        if (c.url.isBlank()) return
+        val list = history().filter { it.url != c.url }.toMutableList()
+        list.add(0, c)
+        val arr = JSONArray()
+        list.take(200).forEach { arr.put(JSONObject().put("t", it.title).put("u", it.url).put("c", it.cover)) }
+        sp.edit().putString("hist", arr.toString()).apply()
+    }
+
+    fun removeHistory(url: String) {
+        val arr = JSONArray()
+        history().filter { it.url != url }
+            .forEach { arr.put(JSONObject().put("t", it.title).put("u", it.url).put("c", it.cover)) }
+        sp.edit().putString("hist", arr.toString()).apply()
+    }
+
+    fun clearHistory() = sp.edit().putString("hist", "[]").apply()
+
     fun lastRead(comicUrl: String): String? = sp.getString("last:$comicUrl", null)
 
     fun setLastRead(comicUrl: String, chapterUrl: String) =

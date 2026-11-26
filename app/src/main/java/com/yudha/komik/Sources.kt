@@ -36,6 +36,8 @@ object Session {
     var chapters: List<Chapter> = emptyList()
     /** Tag bahasa galeri (english/japanese/chinese) untuk terjemahan. */
     var lang = "english"
+    /** Komik yang sedang dibaca (untuk riwayat). */
+    var comic: Comic? = null
 }
 
 interface Source {

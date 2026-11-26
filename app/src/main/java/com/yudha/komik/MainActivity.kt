@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.lifecycle.lifecycleScope
@@ -28,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progress: ProgressBar
     private lateinit var message: TextView
     private lateinit var tabs: TabLayout
-    private var tab = 0 // 0 = Terbaru, 1 = Favorit (di HP), 2 = Bookmark situs (akun)
+    private var tab = 0 // 0 = Terbaru, 1 = Favorit (di HP), 2 = Riwayat, 3 = Bookmark situs (akun)
     private var query: String? = null
     private var page = 1
     private var loading = false
@@ -48,7 +49,18 @@ class MainActivity : AppCompatActivity() {
             title = it
         }
 
-        adapter = ComicAdapter { c ->
+        adapter = ComicAdapter(onLongClick = { c ->
+            if (tab == 2) {
+                AlertDialog.Builder(this)
+                    .setMessage("Hapus \"${c.title}\" dari riwayat?")
+                    .setPositiveButton("Hapus") { _, _ ->
+                        Prefs.removeHistory(c.url)
+                        load(true)
+                    }
+                    .setNegativeButton("Batal", null)
+                    .show()
+            }
+        }) { c ->
             startActivity(
                 Intent(this, DetailActivity::class.java)
                     .putExtra("url", c.url).putExtra("title", c.title).putExtra("cover", c.cover)
@@ -60,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         rv.adapter = adapter
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) {
-                if (tab != 1 && dy > 0 && !loading && hasMore &&
+                if ((tab == 0 || tab == 3) && dy > 0 && !loading && hasMore &&
                     glm.findLastVisibleItemPosition() >= adapter.itemCount - 6
                 ) load(false)
             }
@@ -104,6 +116,12 @@ class MainActivity : AppCompatActivity() {
             adapter.set(emptyList())
         }
         message.visibility = View.GONE
+        if (tab == 2) {
+            val hist = Prefs.history()
+            adapter.set(hist)
+            if (hist.isEmpty()) showMessage("Belum ada riwayat baca.\nKomik yang Anda buka akan muncul di sini.")
+            return
+        }
         if (tab == 1) {
             val fav = Prefs.favorites()
             adapter.set(fav)
@@ -119,7 +137,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val list = withContext(Dispatchers.IO) {
                     when {
-                        tab == 2 -> src.siteFavorites(p)
+                        tab == 3 -> src.siteFavorites(p)
                         q.isNullOrBlank() -> src.latest(p)
                         else -> src.search(q, p)
                     }
@@ -130,7 +148,7 @@ class MainActivity : AppCompatActivity() {
                 if (adapter.itemCount == 0) {
                     showMessage(
                         when {
-                            tab == 2 -> "Bookmark di akun situs masih kosong."
+                            tab == 3 -> "Bookmark di akun situs masih kosong."
                             q.isNullOrBlank() -> "Tidak ada komik ditemukan."
                             else -> "Tidak ada hasil untuk \"$q\"."
                         }
@@ -176,6 +194,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.clearHistory) {
+            AlertDialog.Builder(this)
+                .setTitle("Hapus riwayat?")
+                .setMessage("Semua riwayat baca akan dihapus. Favorit dan halaman terakhir tidak ikut terhapus.")
+                .setPositiveButton("Hapus") { _, _ ->
+                    Prefs.clearHistory()
+                    if (tab == 2) load(true)
+                }
+                .setNegativeButton("Batal", null)
+                .show()
+            return true
+        }
         if (item.itemId == R.id.settings) {
             startActivity(Intent(this, SettingsActivity::class.java))
             return true
@@ -199,7 +229,10 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-class ComicAdapter(private val onClick: (Comic) -> Unit) : RecyclerView.Adapter<ComicAdapter.VH>() {
+class ComicAdapter(
+    private val onLongClick: (Comic) -> Unit = {},
+    private val onClick: (Comic) -> Unit
+) : RecyclerView.Adapter<ComicAdapter.VH>() {
     private val items = mutableListOf<Comic>()
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -220,6 +253,10 @@ class ComicAdapter(private val onClick: (Comic) -> Unit) : RecyclerView.Adapter<
             error(R.color.placeholder)
         }
         h.itemView.setOnClickListener { onClick(c) }
+        h.itemView.setOnLongClickListener {
+            onLongClick(c)
+            true
+        }
     }
 
     fun set(list: List<Comic>) {

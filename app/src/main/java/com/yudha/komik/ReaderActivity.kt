@@ -1,19 +1,23 @@
 package com.yudha.komik
 
 import android.content.Intent
+import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -74,7 +78,7 @@ class ReaderActivity : AppCompatActivity() {
         modeBtn = findViewById(R.id.mode)
         transBtn = findViewById(R.id.trans)
         source = src
-        startPage = intent.getIntExtra("page", 0)
+        startPage = intent.getIntExtra("page", -1) // -1 = lanjut dari halaman terakhir
 
         // Tombol pindah bab hanya untuk komik yang punya lebih dari satu bab.
         val multi = Session.chapters.size > 1
@@ -105,7 +109,13 @@ class ReaderActivity : AppCompatActivity() {
         }
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(r: RecyclerView, dx: Int, dy: Int) = updateInfo()
+            override fun onScrollStateChanged(r: RecyclerView, state: Int) {
+                if (state == RecyclerView.SCROLL_STATE_IDLE) savePage()
+            }
         })
+        // Ketuk nomor halaman untuk lompat ke halaman tertentu
+        chTitle.paintFlags = chTitle.paintFlags or Paint.UNDERLINE_TEXT_FLAG
+        chTitle.setOnClickListener { askPage() }
 
         applyMode()
         open(src, intent.getIntExtra("index", 0))
@@ -122,6 +132,52 @@ class ReaderActivity : AppCompatActivity() {
 
     private fun updateTransBtn() {
         transBtn.text = if (Prefs.translate) "Terjemahan: Nyala" else "Terjemahan: Mati"
+    }
+
+    override fun onPause() {
+        super.onPause()
+        savePage()
+    }
+
+    private fun savePage() {
+        if (!::rv.isInitialized || pages.itemCount == 0) return
+        val ch = Session.chapters.getOrNull(index) ?: return
+        Prefs.setLastPage(ch.url, currentPos())
+    }
+
+    /** Dialog: ketik nomor halaman lalu lompat. */
+    private fun askPage() {
+        val total = pages.itemCount
+        if (total == 0) return
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_NUMBER
+        input.hint = "1 – $total"
+        input.setText((currentPos() + 1).toString())
+        input.setSelectAllOnFocus(true)
+        val box = FrameLayout(this)
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        box.setPadding(pad, pad / 2, pad, 0)
+        box.addView(input)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Lompat ke halaman")
+            .setView(box)
+            .setPositiveButton("Buka") { _, _ ->
+                val n = input.text.toString().toIntOrNull()
+                if (n == null || n < 1 || n > total) {
+                    Toast.makeText(this, "Masukkan angka 1 – $total", Toast.LENGTH_SHORT).show()
+                } else {
+                    rv.scrollToPosition(n - 1)
+                    rv.post {
+                        updateInfo()
+                        savePage()
+                    }
+                }
+            }
+            .setNegativeButton("Batal", null)
+            .create()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        input.requestFocus()
     }
 
     override fun onDestroy() {
@@ -158,11 +214,16 @@ class ReaderActivity : AppCompatActivity() {
     private fun open(src: Source, i: Int) {
         val chs = Session.chapters
         if (i !in chs.indices) return
+        savePage() // simpan posisi bab yang sedang dibaca sebelum pindah
         index = i
         val ch = chs[i]
         prev.isEnabled = i < chs.lastIndex
         next.isEnabled = i > 0
         Prefs.setLastRead(Session.comicUrl, ch.url)
+        Session.comic?.let { Prefs.addHistory(it) }
+        // Halaman awal: dari thumbnail yang dipilih, atau lanjut dari halaman terakhir
+        val first = if (startPage >= 0) startPage else Prefs.lastPage(ch.url)
+        startPage = -2 // pindah bab berikutnya: lanjut dari halaman terakhir bab itu (atau halaman 1)
         pages.set(emptyList())
         message.visibility = View.GONE
         message.setOnClickListener(null)
@@ -172,8 +233,7 @@ class ReaderActivity : AppCompatActivity() {
             try {
                 val list = withContext(Dispatchers.IO) { src.pages(ch.url) }
                 pages.set(list)
-                rv.scrollToPosition(startPage.coerceIn(0, maxOf(0, list.size - 1)))
-                startPage = 0
+                rv.scrollToPosition(first.coerceIn(0, maxOf(0, list.size - 1)))
                 rv.post { updateInfo() }
                 if (list.isEmpty()) {
                     message.text = "Gambar chapter tidak ditemukan."

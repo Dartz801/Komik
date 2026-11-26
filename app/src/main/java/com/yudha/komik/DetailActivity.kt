@@ -118,10 +118,15 @@ class DetailActivity : AppCompatActivity() {
         return true
     }
 
-    private fun openChapter(index: Int, page: Int = 0) {
+    /** page = -1 artinya lanjut dari halaman terakhir yang dibaca. */
+    private fun openChapter(index: Int, page: Int = -1) {
         val d = detail ?: return
         Session.comicUrl = comic.url
         Session.chapters = d.chapters
+        Session.comic = comic.copy(
+            title = d.title.ifBlank { comic.title },
+            cover = d.cover.ifBlank { comic.cover }
+        )
         Session.lang = d.tagGroups.firstOrNull { it.label == "Languages" }?.tags
             ?.map { it.name.lowercase() }?.firstOrNull { it == "japanese" || it == "chinese" || it == "english" }
             ?: "english"
@@ -298,6 +303,8 @@ class DetailActivity : AppCompatActivity() {
             val chapters = d?.chapters.orEmpty()
             val read = v.findViewById<Button>(R.id.start)
             read.visibility = if (chapters.isNotEmpty()) View.VISIBLE else View.GONE
+            val resume = chapters.lastOrNull()?.let { Prefs.lastPage(it.url) } ?: 0
+            read.text = if (resume > 0) "Lanjut hal. ${resume + 1}" else "📖 Baca"
             read.setOnClickListener { openChapter(chapters.lastIndex) }
             val cont = v.findViewById<Button>(R.id.cont)
             val last = Prefs.lastRead(comic.url)
